@@ -5,7 +5,6 @@ const twilio = require('twilio');
 
 // custom modules
 const { getWikiResults, getWikiArticleContent } = require('./customrequests.js');
-const { start } = require('repl');
 
 const accountSid   = process.env.TWILIO_ACCOUNT_SID;
 const authToken    = process.env.TWILIO_AUTH_TOKEN;
@@ -28,6 +27,22 @@ app.use(
     extended: true,
   })
 );
+//create delay between text messages so that messages are delivered in 
+//order 
+function sendMessageWithDelay(message, twilioPhone, testPhone, delay) {
+  return setTimeout(() => {
+    const messageBody = message;
+    client.messages
+      .create({
+        body: messageBody,
+        from: twilioPhone,
+        to: testPhone
+      })
+      .then(message => console.log(`Message sent to ${message.to}: ${message.body}`))
+      .catch(error => console.error(error));
+  }, delay);
+}
+
 
 // Twilio webhook endpoint to initiate the call
 app.post('/make-call', (req, res) => {
@@ -35,7 +50,7 @@ app.post('/make-call', (req, res) => {
   twiml.say('Hello! What would you like to make a Wikipedia search for?');
   twiml.gather({
     input: 'speech',
-    action: '/repeat',
+    action: '/read-wiki-article',
     speechTimeout: 'auto',
     language: 'en-US'
   });
@@ -44,37 +59,50 @@ app.post('/make-call', (req, res) => {
 });
 
 // Twilio webhook endpoint to make wikipedia search and read results back to user
-app.post('/repeat', async (req, res) => {
+app.post('/read-wiki-article', async (req, res) => {
   console.log(req.body);
   const twiml = new twilio.twiml.VoiceResponse();
   const userSpeech = req.body.SpeechResult;
   console.log("userSpeech" + userSpeech);
-  //get array of all wikipedia search results for search term
   const searchResults  = await getWikiResults(userSpeech);
-  // console.log("search results is " + searchResults); 
-  //grab content including title of first wiki result 
   const articleContent = await getWikiArticleContent(searchResults[0].pageid);
-  // console.log("article content is " + articleContent); 
-  // console.log("article content title is " + articleContent.title)
-  // console.log("article content is " + articleContent.content)
 
   var stringToSay = `Article Title: ${articleContent.title}. Article Summary: ${articleContent.content}
   . Thanks for using the Netless Net!`
 
   stringsToSay = []
 
-
-  for(i = 0; i < Math.ceil(stringToSay.length / 300); i++) {
-    var startIndex = 300 * i
-    var endIndex   = (300 * i) + 300
-    stringsToSay.push(stringToSay.substring(startIndex, endIndex));
+//break up long content into size deliverable through twilio 
+  var max_sbstr = 300
+  for (let i = 0; i < stringToSay.length; i += max_sbstr) {
+    const currentString = stringToSay.substring(i, i + max_sbstr);
+    stringsToSay.push(currentString);
+    const messageNumber = Math.floor(i / max_sbstr) + 1;
+    const totalNumber = Math.ceil(stringToSay.length / max_sbstr);
+    sendMessageWithDelay(`Message ${messageNumber}/${totalNumber}: ${currentString}`, twilioPhone, testPhone, i * 5000 / max_sbstr);
   }
+  
   
   stringsToSay.forEach(string => twiml.say(string));
 
-
   twiml.hangup();
   res.set('Content-Type', 'text/xml');
+  res.send(twiml.toString());
+});
+
+// Define a route to process the user's input
+app.post('/process_input', (req, res) => {
+  const twiml = new twilio.twiml.VoiceResponse();
+  const input = req.body.Digits;
+
+  if (input && input.length === 2) {
+    twiml.say(`You entered ${input}. Thank you for your response.`);
+  } else {
+    twiml.say('Invalid input. Please try again.');
+    twiml.redirect('/start');
+  }
+
+  res.type('text/xml');
   res.send(twiml.toString());
 });
 
