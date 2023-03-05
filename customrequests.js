@@ -1,20 +1,29 @@
 // crafted requests used by the server in providing reference info
 const axios = require('axios');
 
-async function getWikiArticle(searchTerm) {
-    try {
-      const searchResponse = await axios.get('https://en.wikipedia.org/w/api.php', {
-        params: {
-          action: 'query',
-          list: 'search',
-          srsearch: searchTerm,
-          format: 'json'
-        }
-      });
-      const pageId = searchResponse.data.query.search[0].pageid;
-      const title = searchResponse.data.query.search[0].title;
-  
-      const contentResponse = await axios.get('https://en.wikipedia.org/w/api.php', {
+// return list of wiki page search objects given a search term
+async function getWikiResults(searchTerm) {
+  try {
+    // look for pages with titles similar to the search term
+    const searchResponse = await axios.get('https://en.wikipedia.org/w/api.php', {
+      params: {
+        action: 'query',
+        list: 'search',
+        srsearch: searchTerm,
+        format: 'json'
+      }
+    });
+    return searchResponse.data.query.search;
+  }
+  catch (e) {
+    console.error("error in getwikiresults article" + e)
+  }
+}
+
+// return the content of an article
+async function getWikiArticleContent(pageId) {
+  try {
+    const contentResponse = await axios.get('https://en.wikipedia.org/w/api.php', {
         params: {
           action: 'query',
           prop: 'extracts',
@@ -25,13 +34,12 @@ async function getWikiArticle(searchTerm) {
         }
       });
       const pageContent = contentResponse.data.query.pages[pageId].extract;
-      return({
-        'Title': title,
-        'Content': pageContent
-      });
-    } catch (error) {
-      console.error(error);
-    }
+      const pageTitle   = contentResponse.data.query.pages[pageId].title;
+      return {title: pageTitle, content: pageContent}
   }
+  catch(e) {
+    console.error("Encountered an errror in getting Wikipedia article content:" + e);
+  }
+}
 
-  module.exports = { getWikiArticle };
+  module.exports = { getWikiResults, getWikiArticleContent };

@@ -4,7 +4,8 @@ const express = require('express');
 const twilio = require('twilio');
 
 // custom modules
-const { getWikiArticle } = require('./customrequests.js');
+const { getWikiResults, getWikiArticleContent } = require('./customrequests.js');
+const { start } = require('repl');
 
 const accountSid   = process.env.TWILIO_ACCOUNT_SID;
 const authToken    = process.env.TWILIO_AUTH_TOKEN;
@@ -47,9 +48,31 @@ app.post('/repeat', async (req, res) => {
   console.log(req.body);
   const twiml = new twilio.twiml.VoiceResponse();
   const userSpeech = req.body.SpeechResult;
-  const wikiResult = await getWikiArticle(userSpeech);
-  twiml.say(`Article Title: ${wikiResult.Title}. Article Summary: ${wikiResult.Content}
-  . Thanks for using the Netless Net!`);
+  console.log("userSpeech" + userSpeech);
+  //get array of all wikipedia search results for search term
+  const searchResults  = await getWikiResults(userSpeech);
+  // console.log("search results is " + searchResults); 
+  //grab content including title of first wiki result 
+  const articleContent = await getWikiArticleContent(searchResults[0].pageid);
+  // console.log("article content is " + articleContent); 
+  // console.log("article content title is " + articleContent.title)
+  // console.log("article content is " + articleContent.content)
+
+  var stringToSay = `Article Title: ${articleContent.title}. Article Summary: ${articleContent.content}
+  . Thanks for using the Netless Net!`
+
+  stringsToSay = []
+
+
+  for(i = 0; i < Math.ceil(stringToSay.length / 300); i++) {
+    var startIndex = 300 * i
+    var endIndex   = (300 * i) + 300
+    stringsToSay.push(stringToSay.substring(startIndex, endIndex));
+  }
+  
+  stringsToSay.forEach(string => twiml.say(string));
+
+
   twiml.hangup();
   res.set('Content-Type', 'text/xml');
   res.send(twiml.toString());
