@@ -16,7 +16,7 @@ async function getWikiResults(searchTerm) {
     return searchResponse.data.query.search;
   }
   catch (e) {
-    console.error("error in getwikiresults article" + e)
+    console.error("Encountered an error in getting Wikipedia results: " + e)
   }
 }
 
