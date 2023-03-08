@@ -6,6 +6,7 @@ const twilio = require('twilio');
 // custom modules
 const { getWikiResults, getWikiArticleContent } = require('./customrequests.js');
 
+const runMode      = process.argv.slice(2)[0] || 'dev';
 const accountSid   = process.env.TWILIO_ACCOUNT_SID;
 const authToken    = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhone  = process.env.TWILIO_PHONE_NUMBER;
@@ -73,18 +74,21 @@ app.post('/read-wiki-article', async (req, res) => {
   stringsToSay = []
 
 //break up long content into size deliverable through twilio 
-  var max_sbstr = 300
-  for (let i = 0; i < stringToSay.length; i += max_sbstr) {
-    const currentString = stringToSay.substring(i, i + max_sbstr);
-    stringsToSay.push(currentString);
-    const messageNumber = Math.floor(i / max_sbstr) + 1;
-    const totalNumber = Math.ceil(stringToSay.length / max_sbstr);
-    sendMessageWithDelay(`Message ${messageNumber}/${totalNumber}: ${currentString}`, twilioPhone, testPhone, i * 5000 / max_sbstr);
+  if(runMode === 'dev') {
+    sendMessageWithDelay("Development Message For Confirmation", twilioPhone, testPhone, 0);
+    twiml.say("Development Message Sent.")
   }
-  
-  
-  stringsToSay.forEach(string => twiml.say(string));
-
+  else{
+    var max_sbstr = 300
+    for (let i = 0; i < stringToSay.length; i += max_sbstr) {
+      const currentString = stringToSay.substring(i, i + max_sbstr);
+      stringsToSay.push(currentString);
+      const messageNumber = Math.floor(i / max_sbstr) + 1;
+      const totalNumber = Math.ceil(stringToSay.length / max_sbstr);
+      sendMessageWithDelay(`Message ${messageNumber}/${totalNumber}: ${currentString}`, twilioPhone, testPhone, i * 5000 / max_sbstr);
+    }
+    stringsToSay.forEach(string => twiml.say(string));
+  }
   twiml.hangup();
   res.set('Content-Type', 'text/xml');
   res.send(twiml.toString());
