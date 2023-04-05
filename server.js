@@ -5,7 +5,7 @@ const twilio = require('twilio');
 const session = require('express-session');
 
 // custom modules
-const { getWikiResults, getWikiArticleContent } = require('./customrequests.js');
+const { getWikiResults, getWikiArticleContent } = require('./requests/wiki-requests.js');
 
 const runMode       = process.argv.slice(2)[0] || 'dev';
 const accountSid    = process.env.TWILIO_ACCOUNT_SID;
