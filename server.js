@@ -6,6 +6,7 @@ const session = require('express-session');
 
 // custom modules
 const { getWikiResults, getWikiArticleContent } = require('./requests/wiki-requests.js');
+const { getChatGPTResponse, getGPTResourceResponse } = require('./requests/gpt-requests.js')
 
 const runMode       = process.argv.slice(2)[0] || 'dev';
 const accountSid    = process.env.TWILIO_ACCOUNT_SID;
@@ -51,7 +52,108 @@ function sendMessageWithDelay(message, twilioPhone, testPhone, delay) {
   }, delay);
 }
 
-// landing pad for wikipedia functionality
+// landing pad for all functionality
+app.post('/start', (req, res) => {
+  console.log("In Start.")
+  const twiml = new twilio.twiml.VoiceResponse();
+  twiml.say('Welcome to the Netless Net. Ask anything.');
+  twiml.gather({
+    input: 'speech',
+    action: '/get-resource',
+    speechTimeout: 'auto',
+    language: 'en-US'
+  });
+  res.set('Content-Type', 'text/xml');
+  res.send(twiml.toString());
+})
+
+// talk with ChatGPT
+app.post('/get-resource', async (req, res) => {
+  console.log("Getting resource...")
+  const twiml = new twilio.twiml.VoiceResponse();
+  const userSpeech = req.body.SpeechResult;
+  const recommendedResult = await getGPTResourceResponse(userSpeech);
+
+  console.log("Recommended result is "+recommendedResult);
+  const recommendedOption = recommendedResult.match(/^([^,]*)/)[1];
+  const recommendedSearch = recommendedResult.match(/, (.*)/)[1];
+  console.log("Recommended Option is "+recommendedOption);
+  console.log("Recommended search is "+recommendedSearch);
+
+  switch(true){
+    case recommendedOption.includes("chatgpt"):
+      console.log("Using ChatGPT");
+      twiml.say("Asking ChatGPT, "+recommendedSearch);
+      break;
+    case recommendedOption.includes("wikipedia"):
+      console.log("Using Wikipedia API");
+      twiml.say("Looking at Wikipedia for "+recommendedSearch);
+      break;
+    case recommendedOption.includes("weather"):
+      console.log("Using Weather API:");
+      twiml.say("Checking the weather in "+recommendedSearch);
+      break;
+    case recommendedOption.includes("news"):
+      console.log("Using News API")
+      twiml.say("Looking at news in the topic: "+recommendedSearch);
+      break;
+    default:
+      console.log("The string contains none of those, damn.")
+  }
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+
+// talk with ChatGPT
+app.post('/search', async (req, res) => {
+  console.log("In Search.")
+  const twiml = new twilio.twiml.VoiceResponse();
+  const userSpeech = req.body.SpeechResult;
+  const chatGPTResponse = await getChatGPTResponse(userSpeech);
+  req.session.currentResponse = chatGPTResponse;
+  // get user input to read, text, both, or search again.
+    const gather = twiml.gather({
+    numDigits: 1,
+    action: '/process',
+    method: 'GET',
+    timeout: 5,
+    numAttempts: 3,
+    loop: 3
+    });
+    gather.say(
+      'Press 1 to read response aloud,' +
+      'Press 2 to send response over text' +
+      'Press 3 to do both,' +
+      'Press 0 to search again'
+    );
+    res.type('text/xml');
+    res.send(twiml.toString());
+  });
+
+//process input
+app.get('/process', (req, res) => {
+  console.log("In Process.")
+  const digit = parseInt(req.query.Digits);
+  const twiml = new twilio.twiml.VoiceResponse();
+  req.session.stringToSay = req.session.currentResponse;
+  
+  if (digit === 0) {
+    twiml.redirect('/start');
+  } else if (digit === 1) {
+    twiml.redirect('/string-voice');
+  } else if (digit === 2) {
+    twiml.redirect('/string-text');
+  } else {
+    twiml.say('Invalid input. Please try again.');
+    twiml.redirect('/wiki-search');
+  }
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+
+// (OLD) landing pad for wikipedia functionality
 app.post('/wiki-start', (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
   twiml.say('Welcome to the Netless Net. What would you like to make a Wikipedia search for?');
@@ -65,6 +167,8 @@ app.post('/wiki-start', (req, res) => {
   res.send(twiml.toString());
 });
 
+
+// (OLD) search functionality for wikipedia
 app.post('/wiki-search', async (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
   const userSpeech = req.body.SpeechResult || req.session.currentQuery;
@@ -90,6 +194,7 @@ app.post('/wiki-search', async (req, res) => {
     );
     res.type('text/xml');
     res.send(twiml.toString());
+
   });
 
 //process input
@@ -123,7 +228,7 @@ app.get('/wiki-process', (req, res) => {
 // read string to user
 app.post('/string-voice', (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
-  const stringToSay = req.session.stringToSay.content;
+  const stringToSay = req.session.stringToSay;
 
   //break up long content into size deliverable through twilio 
   if(runMode === 'dev') {
@@ -138,7 +243,7 @@ app.post('/string-voice', (req, res) => {
     }
     stringsToSay.forEach(string => twiml.say(string));
   }
-  twiml.redirect('/wiki-search');
+  twiml.redirect('/start');
   res.set('Content-Type', 'text/xml');
   res.send(twiml.toString());
 });
@@ -146,7 +251,7 @@ app.post('/string-voice', (req, res) => {
 //text string to user
 app.post('/string-text', (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
-  const stringToSay = req.session.stringToSay.content;
+  const stringToSay = req.session.stringToSay;
 
   //break up long content into size deliverable through twilio 
   if(runMode === 'dev') {
@@ -163,72 +268,9 @@ app.post('/string-text', (req, res) => {
       sendMessageWithDelay(`Message ${messageNumber}/${totalNumber}: ${currentString}`, twilioPhone, testPhone, i * 5000 / max_sbstr);
     }
   }
-  twiml.say("Hi! Just biding our sweet time while we send you those messages. Hope you get them!");
-  // twiml.redirect('/wiki-search');
   res.set('Content-Type', 'text/xml');
   res.send(twiml.toString());
 });
-
-
-
-
-
-
-// // Twilio webhook endpoint to initiate the call (WILL BE WIKI-SEARCH EVENTUALLY)
-// app.post('/make-call', (req, res) => {
-//   const twiml = new twilio.twiml.VoiceResponse();
-//   twiml.say('Hello! What would you like to make a Wikipedia search for?');
-//   twiml.gather({
-//     input: 'speech',
-//     action: '/read-wiki-article',
-//     speechTimeout: 'auto',
-//     language: 'en-US'
-//   });
-//   res.set('Content-Type', 'text/xml');
-//   res.send(twiml.toString());
-// });
-
-// // Twilio webhook endpoint to make wikipedia search and read results back to user
-// app.post('/read-wiki-article', async (req, res) => {
-//   console.log(req.body);
-//   const twiml = new twilio.twiml.VoiceResponse();
-//   const userSpeech = req.body.SpeechResult;
-//   console.log("userSpeech" + userSpeech);
-//   const searchResults  = await getWikiResults(userSpeech);
-//   const articleContent = await getWikiArticleContent(searchResults[0].pageid);
-
-//   var stringToSay = `Article Title: ${articleContent.title}. To read article aloud, press 1. To text article, press 2. For both, press 3. To repeat, press 4. To search again, press 0. Thanks for using the Netless Net!`
-
-//   // store content of article across endpoints, in case
-//   req.session.articleContent = articleContent;
-
-//   stringsToSay = []
-
-// //break up long content into size deliverable through twilio 
-//   if(runMode === 'dev') {
-//     sendMessageWithDelay("Development  Message For Confirmation", twilioPhone, testPhone, 0);
-//     twiml.say("Development Message Sent.")
-//   }
-//   else{
-
-
-//     var max_sbstr = 300
-//     for (let i = 0; i < stringToSay.length; i += max_sbstr) {
-//       const currentString = stringToSay.substring(i, i + max_sbstr);
-//       stringsToSay.push(currentString);
-//       const messageNumber = Math.floor(i / max_sbstr) + 1;
-//       const totalNumber = Math.ceil(stringToSay.length / max_sbstr);
-//       sendMessageWithDelay(`Message ${messageNumber}/${totalNumber}: ${currentString}`, twilioPhone, testPhone, i * 5000 / max_sbstr);
-//     }
-//     stringsToSay.forEach(string => twiml.say(string));
-//   }
-
-//   twiml.hangup();
-//   res.set('Content-Type', 'text/xml');
-//   res.send(twiml.toString());
-// });
-
-
 
 // start the server
 http.createServer(app).listen(3000, () => {
@@ -237,7 +279,7 @@ http.createServer(app).listen(3000, () => {
 
 // Make the initial outgoing call
 client.calls.create({
-  url: ngrok_url+'/wiki-start',
+  url: ngrok_url+'/start',
   to: testPhone,
   from: twilioPhone
 })
