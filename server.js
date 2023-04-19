@@ -56,7 +56,7 @@ function sendMessageWithDelay(message, twilioPhone, testPhone, delay) {
 app.post('/start', (req, res) => {
   console.log("In Start.")
   const twiml = new twilio.twiml.VoiceResponse();
-  twiml.say('Welcome to the Netless Net. Ask anything.');
+  twiml.say('Welcome to the Netless Net. You can ask anything.');
   twiml.gather({
     input: 'speech',
     action: '/get-resource',
@@ -72,48 +72,41 @@ app.post('/get-resource', async (req, res) => {
   console.log("Getting resource...")
   const twiml = new twilio.twiml.VoiceResponse();
   const userSpeech = req.body.SpeechResult;
+  console.log(userSpeech);
   const recommendedResult = await getGPTResourceResponse(userSpeech);
-
-  console.log("Recommended result is "+recommendedResult);
   const recommendedOption = recommendedResult.match(/^([^,]*)/)[1];
   const recommendedSearch = recommendedResult.match(/, (.*)/)[1];
-  console.log("Recommended Option is "+recommendedOption);
-  console.log("Recommended search is "+recommendedSearch);
+  req.session.recommendedSearch = recommendedSearch;
 
+  // recommendedResult expected form: chatgpt, who is barack obama
+  console.log(recommendedResult);
   switch(true){
     case recommendedOption.includes("chatgpt"):
+      req.session.recommendedSearch = userSpeech;
       console.log("Using ChatGPT");
-      twiml.say("Asking ChatGPT, "+recommendedSearch);
+      console.log("Recommended search is "+req.session.recommendedSearch)
+      twiml.say("Asking ChatGPT, "+req.session.recommendedSearch +".");
+      req.session.resourceMode = "chatgpt"
       break;
     case recommendedOption.includes("wikipedia"):
       console.log("Using Wikipedia API");
-      twiml.say("Looking at Wikipedia for "+recommendedSearch);
+      twiml.say("Looking up "+recommendedSearch+" on Wikipedia.");
+      req.session.resourceMode = "wikipedia"
       break;
     case recommendedOption.includes("weather"):
       console.log("Using Weather API:");
       twiml.say("Checking the weather in "+recommendedSearch);
+      req.session.resourceMode = "weather"
       break;
     case recommendedOption.includes("news"):
       console.log("Using News API")
       twiml.say("Looking at news in the topic: "+recommendedSearch);
+      req.session.resourceMode = "news"
       break;
     default:
-      console.log("The string contains none of those, damn.")
+      console.log("No optimal resource identified. Try again.")
   }
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
-
-
-// talk with ChatGPT
-app.post('/search', async (req, res) => {
-  console.log("In Search.")
-  const twiml = new twilio.twiml.VoiceResponse();
-  const userSpeech = req.body.SpeechResult;
-  const chatGPTResponse = await getChatGPTResponse(userSpeech);
-  req.session.currentResponse = chatGPTResponse;
-  // get user input to read, text, both, or search again.
-    const gather = twiml.gather({
+  const gather = twiml.gather({
     numDigits: 1,
     action: '/process',
     method: 'GET',
@@ -127,75 +120,48 @@ app.post('/search', async (req, res) => {
       'Press 3 to do both,' +
       'Press 0 to search again'
     );
-    res.type('text/xml');
-    res.send(twiml.toString());
-  });
-
-//process input
-app.get('/process', (req, res) => {
-  console.log("In Process.")
-  const digit = parseInt(req.query.Digits);
-  const twiml = new twilio.twiml.VoiceResponse();
-  req.session.stringToSay = req.session.currentResponse;
-  
-  if (digit === 0) {
-    twiml.redirect('/start');
-  } else if (digit === 1) {
-    twiml.redirect('/string-voice');
-  } else if (digit === 2) {
-    twiml.redirect('/string-text');
-  } else {
-    twiml.say('Invalid input. Please try again.');
-    twiml.redirect('/wiki-search');
-  }
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-
-// (OLD) landing pad for wikipedia functionality
-app.post('/wiki-start', (req, res) => {
+//process input
+app.get('/process', async (req, res) => {
+  switch(req.session.resourceMode) {
+    case "chatgpt":
+      console.log("Using Resource ChatGPT (in process function)")
+      const result = await getChatGPTResponse(req.session.recommendedSearch);
+      req.session.stringToSay = result;
+      break;
+    case "wikipedia":
+      const searchResults  = await getWikiResults(req.session.recommendedSearch);
+      const articleContent = await getWikiArticleContent(searchResults[0].pageid);
+      console.log(searchResults)
+      console.log(articleContent)
+      req.session.stringToSay = articleContent.content;
+      console.log("Using Resource Wikipedia (in process function)")
+      break;  
+  }
+  const digit = parseInt(req.query.Digits);
   const twiml = new twilio.twiml.VoiceResponse();
-  twiml.say('Welcome to the Netless Net. What would you like to make a Wikipedia search for?');
-  twiml.gather({
-    input: 'speech',
-    action: '/wiki-search',
-    speechTimeout: 'auto',
-    language: 'en-US'
-  });
-  res.set('Content-Type', 'text/xml');
+  console.log("Digit is "+digit)
+  
+  if (digit === 0) {
+    console.log("Digit is 0 for no reason lol")
+    twiml.redirect('/start');
+  } else if (digit === 1) {
+    console.log("In Digit 1")
+    req.session.readMode = "voice";
+    twiml.redirect('/string-voice');
+  } else if (digit === 2) {
+    req.session.readMode = "text"
+    twiml.redirect('/string-text');
+  } else {
+    twiml.say('Invalid input. Please try again.');
+    twiml.redirect('/get-resource');
+  }
+  res.type('text/xml');
   res.send(twiml.toString());
 });
-
-
-// (OLD) search functionality for wikipedia
-app.post('/wiki-search', async (req, res) => {
-  const twiml = new twilio.twiml.VoiceResponse();
-  const userSpeech = req.body.SpeechResult || req.session.currentQuery;
-  req.session.currentQuery = userSpeech;
-  const searchResults  = await getWikiResults(userSpeech);
-  const articleContent = await getWikiArticleContent(searchResults[0].pageid);
-  req.session.articleContent = articleContent;
-  // get user input to read, text, both, or search again.
-    const gather = twiml.gather({
-    numDigits: 1,
-    action: '/wiki-process',
-    method: 'GET',
-    timeout: 5,
-    numAttempts: 3,
-    loop: 3
-    });
-    gather.say(
-      `Article Title: ${articleContent.title},` +
-      'Press 1 to read article aloud,' +
-      'Press 2 to receive the article via text,' +
-      'Press 3 to do both,' +
-      'Press 0 to search again'
-    );
-    res.type('text/xml');
-    res.send(twiml.toString());
-
-  });
 
 //process input
 app.get('/wiki-process', (req, res) => {
@@ -224,9 +190,9 @@ app.get('/wiki-process', (req, res) => {
   res.send(twiml.toString());
 });
 
-
 // read string to user
 app.post('/string-voice', (req, res) => {
+  console.log("In string voice function")
   const twiml = new twilio.twiml.VoiceResponse();
   const stringToSay = req.session.stringToSay;
 
@@ -243,8 +209,52 @@ app.post('/string-voice', (req, res) => {
     }
     stringsToSay.forEach(string => twiml.say(string));
   }
-  twiml.redirect('/start');
+  twiml.redirect('/after-answer');
   res.set('Content-Type', 'text/xml');
+  res.send(twiml.toString());
+});
+
+app.post('/after-answer', (req, res) => {
+  console.log("Readmode in after-answer is "+ req.session.readMode);
+  const twiml = new twilio.twiml.VoiceResponse();
+  const gather = twiml.gather({
+    numDigits: 1,
+    action: '/process-after-answer',
+    method: 'GET',
+    timeout: 5,
+    numAttempts: 3,
+    loop: 3
+    });
+    gather.say(
+      'Press 1 to read/text response again,' +
+      'Press 0 to search again'
+    );
+  res.type('text/xml');
+  res.send(twiml.toString());
+})
+
+//process input
+app.get('/process-after-answer', async (req, res) => {
+  console.log("Readmode in process-after-answer is "+ req.session.readMode);
+  const digit = parseInt(req.query.Digits);
+  const twiml = new twilio.twiml.VoiceResponse();
+  
+  if (digit === 0) {
+    console.log("HERE????")
+    twiml.redirect('/start');
+  } else if (digit === 1) {
+    if(req.session.readMode === "text") {
+      console.log("I think I'll text it...")
+      twiml.redirect('/string-text');
+    }
+    else if (req.session.readMode === "voice") {
+      twiml.redirect('/string-voice');
+    }
+  } else {
+    twiml.say('Invalid input. Please try again.');
+    twiml.redirect('/get-resource');
+  }
+  res.type('text/xml');
   res.send(twiml.toString());
 });
 
@@ -268,6 +278,8 @@ app.post('/string-text', (req, res) => {
       sendMessageWithDelay(`Message ${messageNumber}/${totalNumber}: ${currentString}`, twilioPhone, testPhone, i * 5000 / max_sbstr);
     }
   }
+  twiml.say("You should be receiving your answer via text. Please hold.")
+  twiml.redirect('/after-answer')
   res.set('Content-Type', 'text/xml');
   res.send(twiml.toString());
 });
