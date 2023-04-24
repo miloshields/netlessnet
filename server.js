@@ -8,6 +8,8 @@ const session = require('express-session');
 const { getWikiResults, getWikiArticleContent } = require('./requests/wiki-requests.js');
 const { getChatGPTResponse, getGPTResourceResponse } = require('./requests/gpt-requests.js')
 const { getLocationKey, getWeatherConditions } = require('./requests/weather-requests');
+const { getNewsSummary } = require('./requests/news-requests.js');
+
 
 const runMode       = process.argv.slice(2)[0] || 'dev';
 const accountSid    = process.env.TWILIO_ACCOUNT_SID;
@@ -114,8 +116,7 @@ app.post('/get-resource', async (req, res) => {
     });
     gather.say(
       'Press 1 to read response aloud,' +
-      'Press 2 to send response over text' +
-      'Press 3 to do both,' +
+      'Press 2 to send response over text, ' +
       'Press 0 to search again, '
     );
   res.type('text/xml');
@@ -151,6 +152,18 @@ app.get('/process', async (req, res) => {
         console.log("Good weather request.");
         break;
       }
+    case "news":
+      const newsSummary = await getNewsSummary(req.session.recommendedSearch);
+      console.log("Received request from news:\n"+newsSummary);
+      if ( newsSummary == ""){
+        req.session.stringToSay = "Looks like that news search for "+recommendedSearch +" didn't work. Please try again with a more general search term.";
+      }
+      else {
+        req.session.stringToSay = newsSummary;
+        break;
+      }
+    default:
+      req.session.stringToSay = "No valid resource recognized. Please try again."
   }
   const digit = parseInt(req.query.Digits);
   const twiml = new twilio.twiml.VoiceResponse();
@@ -286,7 +299,7 @@ app.post('/string-text', (req, res) => {
       stringsToSay.push(currentString);
       const messageNumber = Math.floor(i / max_sbstr) + 1;
       const totalNumber = Math.ceil(stringToSay.length / max_sbstr);
-      sendMessageWithDelay(`Message ${messageNumber}/${totalNumber}: ${currentString}`, twilioPhone, testPhone, i * 5000 / max_sbstr);
+      sendMessageWithDelay(`Message ${messageNumber}/${totalNumber}: ${currentString}`, twilioPhone, req.body.From, i * 5000 / max_sbstr);
     }
   }
   twiml.say("You should be receiving your answer via text. Please hold.")
@@ -296,15 +309,6 @@ app.post('/string-text', (req, res) => {
 });
 
 // start the server
-http.createServer(app).listen(3000, () => {
-    console.log('Express server listening on port 3000');
+http.createServer(app).listen(8000, () => {
+    console.log('Express server listening on port 8000');
 });
-
-// Make the initial outgoing call
-client.calls.create({
-  url: ngrok_url+'/start',
-  to: testPhone,
-  from: twilioPhone
-})
-.then(call => console.log(call.sid))
-.catch(error => console.log(error));
