@@ -2,6 +2,8 @@
 
 const assert     = require('assert');
 const GPTAPI = require('./requests/gpt-requests');
+const { getLocationKey, getWeatherConditions } = require('./requests/weather-requests.js');
+
 
 async function main() {
   assert.doesNotThrow(() => {
@@ -61,6 +63,33 @@ async function main() {
       console.log(`Output: ${resourceResponse}`);
       console.log(`Time Elapsed: ${elapsedTime.toFixed(2)}s\n`);
     }
+
+  console.log("Starting weather api test suite.")
+    // Test 1: getLocationKey returns a valid key for a known location
+  const bostonKey = await getLocationKey('Boston, Massachusetts');
+  assert.strictEqual(typeof bostonKey, 'string', 'Location key should be a string');
+  assert.ok(bostonKey.length > 0, 'Location key should not be empty');
+
+  // Test 2: getLocationKey returns null for an invalid location
+  const invalidLocationKey = await getLocationKey('Invalid location');
+  assert.strictEqual(invalidLocationKey, null, 'Location key should be null for invalid location');
+
+  // Test 3: getWeatherConditions returns valid data for a known location key
+  const bostonWeather = await getWeatherConditions(bostonKey);
+  assert.ok(Array.isArray(bostonWeather), 'Weather data should be an array');
+  assert.strictEqual(bostonWeather.length, 2, 'Weather data array should have 2 elements');
+  assert.strictEqual(typeof bostonWeather[0], 'number', 'Temperature should be a number');
+  assert.strictEqual(typeof bostonWeather[1], 'string', 'Weather text should be a string');
+
+  // Test 4: getWeatherConditions returns [1000, "Looks like we couldn't find any weather for that place."] for an invalid location key
+  const invalidWeather = await getWeatherConditions('9459028354098253409');
+  assert.deepStrictEqual(
+    invalidWeather,
+    [1000, "Looks like we couldn't find any weather for that place."],
+    'Weather data should be [1000, "Looks like we couldn\'t find any weather for that place."] for invalid location key'
+  );
+
+  console.log('All tests passed.');
     
 }
 

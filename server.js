@@ -7,6 +7,7 @@ const session = require('express-session');
 // custom modules
 const { getWikiResults, getWikiArticleContent } = require('./requests/wiki-requests.js');
 const { getChatGPTResponse, getGPTResourceResponse } = require('./requests/gpt-requests.js')
+const { getLocationKey, getWeatherConditions } = require('./requests/weather-requests');
 
 const runMode       = process.argv.slice(2)[0] || 'dev';
 const accountSid    = process.env.TWILIO_ACCOUNT_SID;
@@ -14,9 +15,6 @@ const authToken     = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhone   = process.env.TWILIO_PHONE_NUMBER;
 const testPhone     = process.env.TEST_PHONE_NUMBER;
 const sessionSecret = process.env.EXPRESS_SESSION_SECRET;
-// const binUrl       = process.env.TWILIO_BIN_URL;
-// const googleApiKey = process.env.GOOGLE_API_KEY;
-// const wikisearchCx = process.env.WIKISEARCH_CX_KEY;
 const ngrok_url     = process.env.NGROK_TUNNEL_URL;
 
 // Initialize Twilio client
@@ -67,7 +65,7 @@ app.post('/start', (req, res) => {
   res.send(twiml.toString());
 })
 
-// talk with ChatGPT
+// get recommended resource based on output of the text-davinci-003 model
 app.post('/get-resource', async (req, res) => {
   console.log("Getting resource...")
   const twiml = new twilio.twiml.VoiceResponse();
@@ -78,7 +76,7 @@ app.post('/get-resource', async (req, res) => {
   const recommendedSearch = recommendedResult.match(/, (.*)/)[1];
   req.session.recommendedSearch = recommendedSearch;
 
-  // recommendedResult expected form: chatgpt, who is barack obama
+  // recommendedResult expected form: "chatgpt, who is barack obama"
   console.log(recommendedResult);
   switch(true){
     case recommendedOption.includes("chatgpt"):
@@ -118,7 +116,7 @@ app.post('/get-resource', async (req, res) => {
       'Press 1 to read response aloud,' +
       'Press 2 to send response over text' +
       'Press 3 to do both,' +
-      'Press 0 to search again'
+      'Press 0 to search again, '
     );
   res.type('text/xml');
   res.send(twiml.toString());
@@ -139,7 +137,20 @@ app.get('/process', async (req, res) => {
       console.log(articleContent)
       req.session.stringToSay = articleContent.content;
       console.log("Using Resource Wikipedia (in process function)")
-      break;  
+      break;
+    case "weather":
+      const locationKey = await getLocationKey(req.session.recommendedSearch);
+      const weatherConditions = await getWeatherConditions(locationKey);
+      if(weatherConditions[0] == 1000) {
+        req.session.stringToSay = "Looks like we don't have weather information for that right now. Sorry!";
+        console.log("Bad weather request.");
+        break;
+      }
+      else{
+        req.session.stringToSay = "Looks like the temperature in Fahrenheit is "+weatherConditions[0] + " degrees and the weather is "+weatherConditions[1]+ " in " + req.session.recommendedSearch;
+        console.log("Good weather request.");
+        break;
+      }
   }
   const digit = parseInt(req.query.Digits);
   const twiml = new twilio.twiml.VoiceResponse();
