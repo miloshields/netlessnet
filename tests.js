@@ -3,7 +3,7 @@
 const assert     = require('assert');
 const GPTAPI = require('./requests/gpt-requests');
 const { getLocationKey, getWeatherConditions } = require('./requests/weather-requests.js');
-
+const NewsAPI = require('./requests/news-requests');
 
 async function main() {
   assert.doesNotThrow(() => {
@@ -11,8 +11,26 @@ async function main() {
   }, Error);
 
   assert.doesNotThrow(() => {
-      GPTAPI.getGPTResourceResponse("Testing")
+      NewsAPI.getNewsSummary("Ukraine")
     }, Error);
+
+  const newsPrompts = [
+    "War in Ukraine",
+    "Middle East",
+    "US Educational System",
+    "2024 Presidential Race"
+  ]
+
+  console.log("Starting News Request Testing Suite...");
+    
+    for (let i = 0; i < newsPrompts.length; i++) {
+      let startTime = Date.now();
+      console.log(`Test ${i + 1}}\nInput: ${newsPrompts[i]}`);
+      let newsResponse = await NewsAPI.getNewsSummary(newsPrompts[i]);
+      let elapsedTime = (Date.now() - startTime) / 1000;
+      console.log(`Output: ${newsResponse}`);
+      console.log(`Time Elapsed: ${elapsedTime.toFixed(2)}s\n`);
+    }
 
     const resourcePrompts = [
       "Who is Barack Obama?",
