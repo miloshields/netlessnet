@@ -4,6 +4,7 @@
     "start prod": "ngrok http 3000 --log=stdout | grep -o 'https://.*\\.ngrok.io' | xargs -I {} sh -c 'echo NGROK_TUNNEL_URL=https://{} > .env' && node server.js"
   },
   "dependencies": {
+    "crypto": "^1.0.1",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "express-session": "^1.17.3",
