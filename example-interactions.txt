@@ -1,0 +1,23 @@
+USER MODE: INTRO
+NN: Hello. Welcome to the Netless Net. The Netless Net is an educational informational tool designed to bring basic reference functionality, such as calculator, general information, wikipedia queries, and general information and advice to those with a phone call connection.
+Press 1 to perform a query, 2 for help or search suggestions, and 3 to switch to expert mode. Press 0 to repeat.
+
+1 -> NN waits for query over voice.
+    NN: {response to query}
+    NN: Press 1 to perform another query, 2 to send the results over text message, or 0 to return home.
+        2 -> send the results over text message. Press 1 to perform another query, 2 to send results again, 3 to repeat or 0 to return home.
+
+2 -> NN: Example Queries: "What are the first 10 factorials? What is the weather like in Boston, MA? Why are flamingos pink? Who is Alan Turing?"
+
+3 -> NN: In expert mode, interaction is structured as a conversation. As Netless Net responds, you can say "text it to me" to interrupt it, you can say "stop" to have it stop talking and wait for another query. Press 9 to enter expert mode, or press 0 to go home.
+
+USER MODE: EXPERT
+
+NN: Hi! I'm the Netless Net. Ask away, or press 3 to return to tutorial mode.
+
+3 -> enter tutorial mode and go to start block
+
+{speech input} -> NN: {response to query}
+Expert mode should be context aware. We should be able to append 
+
+~~~~HOW TO HANDLE INTERRUPTIONS~~~~
