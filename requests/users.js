@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 require('dotenv').config();
 
-async function registerUser(phoneNumber, mongoClient) {
+async function registerUser(mongoClient, phoneNumber) {
     const salt = process.env.SALT_VALUE;
     const hash = crypto.createHash('sha512').update(phoneNumber + salt).digest('hex');
 
@@ -13,7 +13,7 @@ async function registerUser(phoneNumber, mongoClient) {
     }
 }
 
-async function checkIfUserExists(phoneNumber, mongoClient) {
+async function checkIfUserExists(mongoClient, phoneNumber) {
     const salt = process.env.SALT_VALUE;
     const hash = crypto.createHash('sha512').update(phoneNumber + salt).digest('hex');
 

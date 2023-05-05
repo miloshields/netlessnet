@@ -10,14 +10,30 @@ const { getChatGPTResponse, getGPTResourceResponse } = require('./requests/gpt-r
 const { getLocationKey, getWeatherConditions } = require('./requests/weather-requests');
 const { getNewsSummary } = require('./requests/news-requests.js');
 
+const { MongoClient, ServerApiVersion } = require('mongodb');
+const { checkIfUserExists, registerUser } = require('./requests/users.js');
+
+const uri = process.env.MONGO_URI;
+const mongoClient = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+});
+// async function main () {
+//   await mongoClient.connect();
+//   const collections = await mongoClient.db("admin").listCollections().toArray();
+//   console.log("Collections:\n"+collections);
+// }
+// main();
+
 
 const runMode       = process.argv.slice(2)[0] || 'dev';
 const accountSid    = process.env.TWILIO_ACCOUNT_SID;
 const authToken     = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhone   = process.env.TWILIO_PHONE_NUMBER;
-const testPhone     = process.env.TEST_PHONE_NUMBER;
 const sessionSecret = process.env.EXPRESS_SESSION_SECRET;
-const ngrok_url     = process.env.NGROK_TUNNEL_URL;
 
 // Initialize Twilio client
 const client = twilio(accountSid, authToken);
@@ -52,10 +68,21 @@ function sendMessageWithDelay(message, twilioPhone, testPhone, delay) {
   }, delay);
 }
 
+
 // landing pad for all functionality
-app.post('/start', (req, res) => {
+app.post('/start', async (req, res) => {
   console.log("In Start.")
   const twiml = new twilio.twiml.VoiceResponse();
+  await mongoClient.connect();
+
+  if( await checkIfUserExists(mongoClient, req.body.From)) {
+    twiml.say("The user is in the system.");
+  }
+  else {
+    twiml.say("The user is not yet in the system");
+    await registerUser(mongoClient, req.body.From)
+  }
+
   twiml.say('Welcome to the Netless Net. You can ask anything.');
   twiml.gather({
     input: 'speech',
